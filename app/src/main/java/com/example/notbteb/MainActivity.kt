@@ -58,6 +58,8 @@ import androidx.work.WorkManager
 import com.example.notbteb.ui.theme.NotBTEBTheme
 import java.util.concurrent.TimeUnit
 
+import androidx.core.content.edit
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,7 +67,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             NotBTEBTheme {
                 val context = LocalContext.current
-                val prefs = remember { context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
+                val prefs = remember { context.getSharedPreferences("app_prefs", MODE_PRIVATE) }
                 
                 var selectedCategory by remember { mutableStateOf(prefs.getString("selected_category", "All") ?: "All") }
                 val notices = remember { mutableStateListOf<Notice>() }
@@ -80,23 +82,28 @@ class MainActivity : ComponentActivity() {
                 ) { isGranted ->
                     if (isGranted) {
                         isNotificationsEnabled = true
-                        prefs.edit().putBoolean("notifications_enabled", true).apply()
+                        prefs.edit { putBoolean("notifications_enabled", true) }
                         scheduleNotificationWorker(context)
                     }
                 }
 
                 LaunchedEffect(selectedCategory) {
                     isLoading = true
-                    prefs.edit().putString("selected_category", selectedCategory).apply()
-                    val response = NoticeScraper.fetchNotices(selectedCategory)
-                    notices.clear()
-                    notices.addAll(response.notices)
-                    
-                    if (response.lastUpdate.isNotEmpty()) {
-                        lastUpdate = response.lastUpdate
-                        prefs.edit().putString("last_update", lastUpdate).apply()
+                    prefs.edit { putString("selected_category", selectedCategory) }
+                    try {
+                        val response = NoticeScraper.fetchNotices(selectedCategory)
+                        notices.clear()
+                        notices.addAll(response.notices)
+                        
+                        if (response.lastUpdate.isNotEmpty()) {
+                            lastUpdate = response.lastUpdate
+                            prefs.edit { putString("last_update", lastUpdate) }
+                        }
+                    } catch (e: Exception) {
+                        // Log or show error
+                    } finally {
+                        isLoading = false
                     }
-                    isLoading = false
                     
                     if (isNotificationsEnabled) {
                         scheduleNotificationWorker(context)
@@ -115,19 +122,19 @@ class MainActivity : ComponentActivity() {
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                                             isNotificationsEnabled = true
-                                            prefs.edit().putBoolean("notifications_enabled", true).apply()
+                                            prefs.edit { putBoolean("notifications_enabled", true) }
                                             scheduleNotificationWorker(context)
                                         } else {
                                             launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                         }
                                     } else {
                                         isNotificationsEnabled = true
-                                        prefs.edit().putBoolean("notifications_enabled", true).apply()
+                                        prefs.edit { putBoolean("notifications_enabled", true) }
                                         scheduleNotificationWorker(context)
                                     }
                                 } else {
                                     isNotificationsEnabled = false
-                                    prefs.edit().putBoolean("notifications_enabled", false).apply()
+                                    prefs.edit { putBoolean("notifications_enabled", false) }
                                     cancelNotificationWorker(context)
                                 }
                             }

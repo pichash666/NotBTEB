@@ -25,17 +25,25 @@ object NoticeScraper {
         "HSC" to "$BASE_URL/pages/static-pages/691997b6933eb65569dde56c"
     )
 
+    private val dateRegex = """(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}|\d{2}/\d{2}/\d{4})""".toRegex()
+    private val updateRegex = """হাল-নাগাদ করা হয়েছে[:\s]+([^এ\n]+)""".toRegex()
+    private val titlePrefixRegex = """^[\[\]\s:-]+""".toRegex()
+    private val titleSuffixRegex = """[\[\]\s:-]+$""".toRegex()
+
     suspend fun fetchNotices(category: String): NoticeResponse = withContext(Dispatchers.IO) {
         val url = URL_MAP[category] ?: URL_MAP["All"]!!
         val notices = mutableListOf<Notice>()
         var lastUpdate = ""
         
         try {
-            val doc = Jsoup.connect(url).get()
+            val doc = Jsoup.connect(url)
+                .timeout(10000)
+                .userAgent("Mozilla/5.0")
+                .get()
             
             // Extract Last Update Date
             val footerText = doc.text()
-            val updateMatch = """হাল-নাগাদ করা হয়েছে[:\s]+([^এ\n]+)""".toRegex().find(footerText)
+            val updateMatch = updateRegex.find(footerText)
             lastUpdate = updateMatch?.groupValues?.get(1)?.trim() ?: ""
 
             if (category == "All") {
@@ -57,14 +65,13 @@ object NoticeScraper {
                     val linkElement = item.select("a").first() ?: continue
                     val fullText = item.text().trim()
                     
-                    val dateRegex = """(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}|\d{2}/\d{2}/\d{4})""".toRegex()
                     val dateMatch = dateRegex.find(fullText)
                     
                     if (dateMatch != null) {
                         val date = dateMatch.value
                         val title = fullText.replace(date, "").trim()
-                        val cleanTitle = title.replace(Regex("""^[\[\]\s:-]+"""), "")
-                                             .replace(Regex("""[\[\]\s:-]+$"""), "")
+                        val cleanTitle = title.replace(titlePrefixRegex, "")
+                                             .replace(titleSuffixRegex, "")
                         
                         val link = linkElement.attr("href").let { 
                             if (it.startsWith("/")) BASE_URL + it else it 
@@ -78,7 +85,7 @@ object NoticeScraper {
                 notices.sortByDescending { it.date }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            // Error handling
         }
         
         NoticeResponse(notices, lastUpdate)
