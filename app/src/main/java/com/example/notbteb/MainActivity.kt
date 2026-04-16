@@ -1,5 +1,6 @@
 package com.example.notbteb
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -41,10 +42,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
 import com.example.notbteb.ui.theme.NotBTEBTheme
 
 class MainActivity : ComponentActivity() {
@@ -53,15 +54,24 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             NotBTEBTheme {
+                val context = LocalContext.current
+                val prefs = remember { context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
+                
                 var selectedCategory by remember { mutableStateOf("All") }
                 val notices = remember { mutableStateListOf<Notice>() }
+                var lastUpdate by remember { mutableStateOf(prefs.getString("last_update", "") ?: "") }
                 var isLoading by remember { mutableStateOf(false) }
 
                 LaunchedEffect(selectedCategory) {
                     isLoading = true
-                    val fetched = NoticeScraper.fetchNotices(selectedCategory)
+                    val response = NoticeScraper.fetchNotices(selectedCategory)
                     notices.clear()
-                    notices.addAll(fetched)
+                    notices.addAll(response.notices)
+                    
+                    if (response.lastUpdate.isNotEmpty()) {
+                        lastUpdate = response.lastUpdate
+                        prefs.edit().putString("last_update", lastUpdate).apply()
+                    }
                     isLoading = false
                 }
 
@@ -69,6 +79,7 @@ class MainActivity : ComponentActivity() {
                     Column(modifier = Modifier.padding(innerPadding)) {
                         TopControls(
                             selectedCategory = selectedCategory,
+                            lastUpdate = lastUpdate,
                             onCategorySelected = { selectedCategory = it }
                         )
                         if (isLoading) {
@@ -93,6 +104,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TopControls(
     selectedCategory: String,
+    lastUpdate: String,
     onCategorySelected: (String) -> Unit
 ) {
     val options = listOf("All", "Diploma", "SSC", "HSC")
@@ -137,17 +149,31 @@ fun TopControls(
             }
         }
 
-        Switch(
-            checked = checked,
-            onCheckedChange = { checked = it },
-            thumbContent = {
-                Icon(
-                    imageVector = if (checked) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
-                    contentDescription = null,
-                    modifier = Modifier.size(SwitchDefaults.IconSize)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Switch(
+                checked = checked,
+                onCheckedChange = { checked = it },
+                thumbContent = {
+                    Icon(
+                        imageVector = if (checked) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
+                        contentDescription = null,
+                        modifier = Modifier.size(SwitchDefaults.IconSize)
+                    )
+                }
+            )
+            if (lastUpdate.isNotEmpty()) {
+                Text(
+                    text = "Last: $lastUpdate",
+                    fontSize = 8.sp,
+                    lineHeight = 10.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
-        )
+        }
     }
 }
 
@@ -185,14 +211,6 @@ fun NoticeItem(notice: Notice) {
 @Composable
 fun TopControlsPreview() {
     NotBTEBTheme {
-        TopControls(selectedCategory = "All", onCategorySelected = {})
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    NotBTEBTheme {
-        //Greeting("Android")
+        TopControls(selectedCategory = "All", lastUpdate = "15-04-2026", onCategorySelected = {})
     }
 }

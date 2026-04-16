@@ -10,6 +10,11 @@ data class Notice(
     val link: String
 )
 
+data class NoticeResponse(
+    val notices: List<Notice>,
+    val lastUpdate: String
+)
+
 object NoticeScraper {
     private const val BASE_URL = "https://bteb.gov.bd"
     
@@ -20,13 +25,19 @@ object NoticeScraper {
         "HSC" to "$BASE_URL/pages/static-pages/691997b6933eb65569dde56c"
     )
 
-    suspend fun fetchNotices(category: String): List<Notice> = withContext(Dispatchers.IO) {
+    suspend fun fetchNotices(category: String): NoticeResponse = withContext(Dispatchers.IO) {
         val url = URL_MAP[category] ?: URL_MAP["All"]!!
         val notices = mutableListOf<Notice>()
+        var lastUpdate = ""
         
         try {
             val doc = Jsoup.connect(url).get()
             
+            // Extract Last Update Date
+            val footerText = doc.text()
+            val updateMatch = """হাল-নাগাদ করা হয়েছে[:\s]+([^এ\n]+)""".toRegex().find(footerText)
+            lastUpdate = updateMatch?.groupValues?.get(1)?.trim() ?: ""
+
             if (category == "All") {
                 val rows = doc.select("table tbody tr")
                 for (row in rows) {
@@ -41,23 +52,17 @@ object NoticeScraper {
                     }
                 }
             } else {
-                // Static pages (Diploma, SSC, HSC)
-                // Use a more broad selection and then filter by common notice patterns
                 val items = doc.select("li, tr")
-                
                 for (item in items) {
                     val linkElement = item.select("a").first() ?: continue
                     val fullText = item.text().trim()
                     
-                    // Pattern for date: YYYY-MM-DD or DD-MM-YYYY or DD/MM/YYYY
                     val dateRegex = """(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}|\d{2}/\d{2}/\d{4})""".toRegex()
                     val dateMatch = dateRegex.find(fullText)
                     
                     if (dateMatch != null) {
                         val date = dateMatch.value
                         val title = fullText.replace(date, "").trim()
-                        
-                        // Clean up title: remove common prefixes/suffixes and brackets
                         val cleanTitle = title.replace(Regex("""^[\[\]\s:-]+"""), "")
                                              .replace(Regex("""[\[\]\s:-]+$"""), "")
                         
@@ -65,20 +70,17 @@ object NoticeScraper {
                             if (it.startsWith("/")) BASE_URL + it else it 
                         }
                         
-                        // Avoid adding duplicates and very short titles (unlikely to be notices)
                         if (cleanTitle.length > 5 && !notices.any { it.title == cleanTitle }) {
                             notices.add(Notice(cleanTitle, date, link))
                         }
                     }
                 }
-                
-                // Sort by date descending if possible (assuming YYYY-MM-DD format mostly)
                 notices.sortByDescending { it.date }
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
         
-        notices
+        NoticeResponse(notices, lastUpdate)
     }
 }
