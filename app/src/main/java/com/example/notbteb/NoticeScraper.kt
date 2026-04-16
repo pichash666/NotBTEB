@@ -33,7 +33,7 @@ object NoticeScraper {
     suspend fun fetchNotices(category: String): NoticeResponse = withContext(Dispatchers.IO) {
         val url = URL_MAP[category] ?: URL_MAP["All"]!!
         val notices = mutableListOf<Notice>()
-        var lastUpdate = ""
+        var siteLastUpdate = ""
         
         try {
             val doc = Jsoup.connect(url)
@@ -41,10 +41,10 @@ object NoticeScraper {
                 .userAgent("Mozilla/5.0")
                 .get()
             
-            // Extract Last Update Date
+            // Extract Site Last Update Date from footer as fallback
             val footerText = doc.text()
             val updateMatch = updateRegex.find(footerText)
-            lastUpdate = updateMatch?.groupValues?.get(1)?.trim() ?: ""
+            siteLastUpdate = updateMatch?.groupValues?.get(1)?.trim() ?: ""
 
             if (category == "All") {
                 val rows = doc.select("table tbody tr")
@@ -88,6 +88,9 @@ object NoticeScraper {
             // Error handling
         }
         
-        NoticeResponse(notices, lastUpdate)
+        // Use the date of the latest notice if available, otherwise fallback to site update date
+        val displayUpdate = notices.firstOrNull()?.date ?: siteLastUpdate
+        
+        NoticeResponse(notices, displayUpdate)
     }
 }
