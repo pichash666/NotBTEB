@@ -35,6 +35,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import com.example.notbteb.ui.theme.NotBTEBTheme
 
 class MainActivity : ComponentActivity() {
@@ -43,12 +53,35 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             NotBTEBTheme {
+                var selectedCategory by remember { mutableStateOf("All") }
+                val notices = remember { mutableStateListOf<Notice>() }
+                var isLoading by remember { mutableStateOf(false) }
+
+                LaunchedEffect(selectedCategory) {
+                    isLoading = true
+                    val fetched = NoticeScraper.fetchNotices(selectedCategory)
+                    notices.clear()
+                    notices.addAll(fetched)
+                    isLoading = false
+                }
+
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Column(modifier = Modifier.padding(innerPadding)) {
-                        TopControls()
-                        Greeting(
-                            name = "Android"
+                        TopControls(
+                            selectedCategory = selectedCategory,
+                            onCategorySelected = { selectedCategory = it }
                         )
+                        if (isLoading) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.Center,
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        } else {
+                            NoticeList(notices = notices)
+                        }
                     }
                 }
             }
@@ -58,10 +91,12 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TopControls() {
+fun TopControls(
+    selectedCategory: String,
+    onCategorySelected: (String) -> Unit
+) {
     val options = listOf("All", "Diploma", "SSC", "HSC")
     var expanded by remember { mutableStateOf(false) }
-    var selectedOptionText by remember { mutableStateOf(options[0]) }
     var checked by remember { mutableStateOf(false) }
 
     Row(
@@ -74,12 +109,12 @@ fun TopControls() {
         ExposedDropdownMenuBox(
             expanded = expanded,
             onExpandedChange = { expanded = !expanded },
-            modifier = Modifier.width(160.dp)
+            modifier = Modifier.width(250.dp)
         ) {
             OutlinedTextField(
                 modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                 readOnly = true,
-                value = selectedOptionText,
+                value = selectedCategory,
                 onValueChange = {},
                 label = { Text("Filter") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
@@ -93,7 +128,7 @@ fun TopControls() {
                     DropdownMenuItem(
                         text = { Text(selectionOption) },
                         onClick = {
-                            selectedOptionText = selectionOption
+                            onCategorySelected(selectionOption)
                             expanded = false
                         },
                         contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
@@ -117,18 +152,40 @@ fun TopControls() {
 }
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
+fun NoticeList(notices: List<Notice>) {
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(notices) { notice ->
+            NoticeItem(notice)
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+        }
+    }
+}
+
+@Composable
+fun NoticeItem(notice: Notice) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = notice.title,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = notice.date,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
 }
 
 @Preview(showBackground = true)
 @Composable
 fun TopControlsPreview() {
     NotBTEBTheme {
-        TopControls()
+        TopControls(selectedCategory = "All", onCategorySelected = {})
     }
 }
 
@@ -136,6 +193,6 @@ fun TopControlsPreview() {
 @Composable
 fun GreetingPreview() {
     NotBTEBTheme {
-        Greeting("Android")
+        //Greeting("Android")
     }
 }
