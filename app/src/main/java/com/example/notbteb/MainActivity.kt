@@ -1,10 +1,15 @@
 package com.example.notbteb
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -46,7 +51,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.example.notbteb.ui.theme.NotBTEBTheme
+import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,13 +67,27 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
                 val prefs = remember { context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
                 
-                var selectedCategory by remember { mutableStateOf("All") }
+                var selectedCategory by remember { mutableStateOf(prefs.getString("selected_category", "All") ?: "All") }
                 val notices = remember { mutableStateListOf<Notice>() }
                 var lastUpdate by remember { mutableStateOf(prefs.getString("last_update", "") ?: "") }
                 var isLoading by remember { mutableStateOf(false) }
+                var isNotificationsEnabled by remember { 
+                    mutableStateOf(prefs.getBoolean("notifications_enabled", false)) 
+                }
+
+                val launcher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { isGranted ->
+                    if (isGranted) {
+                        isNotificationsEnabled = true
+                        prefs.edit().putBoolean("notifications_enabled", true).apply()
+                        scheduleNotificationWorker(context)
+                    }
+                }
 
                 LaunchedEffect(selectedCategory) {
                     isLoading = true
+                    prefs.edit().putString("selected_category", selectedCategory).apply()
                     val response = NoticeScraper.fetchNotices(selectedCategory)
                     notices.clear()
                     notices.addAll(response.notices)
@@ -73,6 +97,10 @@ class MainActivity : ComponentActivity() {
                         prefs.edit().putString("last_update", lastUpdate).apply()
                     }
                     isLoading = false
+                    
+                    if (isNotificationsEnabled) {
+                        scheduleNotificationWorker(context)
+                    }
                 }
 
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -80,7 +108,29 @@ class MainActivity : ComponentActivity() {
                         TopControls(
                             selectedCategory = selectedCategory,
                             lastUpdate = lastUpdate,
-                            onCategorySelected = { selectedCategory = it }
+                            notificationsEnabled = isNotificationsEnabled,
+                            onCategorySelected = { selectedCategory = it },
+                            onNotificationsChanged = { enabled ->
+                                if (enabled) {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                                            isNotificationsEnabled = true
+                                            prefs.edit().putBoolean("notifications_enabled", true).apply()
+                                            scheduleNotificationWorker(context)
+                                        } else {
+                                            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        }
+                                    } else {
+                                        isNotificationsEnabled = true
+                                        prefs.edit().putBoolean("notifications_enabled", true).apply()
+                                        scheduleNotificationWorker(context)
+                                    }
+                                } else {
+                                    isNotificationsEnabled = false
+                                    prefs.edit().putBoolean("notifications_enabled", false).apply()
+                                    cancelNotificationWorker(context)
+                                }
+                            }
                         )
                         if (isLoading) {
                             Column(
@@ -98,6 +148,20 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun scheduleNotificationWorker(context: Context) {
+        val workRequest = PeriodicWorkRequestBuilder<NoticeWorker>(15, TimeUnit.MINUTES)
+            .build()
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            "notice_monitor",
+            ExistingPeriodicWorkPolicy.REPLACE,
+            workRequest
+        )
+    }
+
+    private fun cancelNotificationWorker(context: Context) {
+        WorkManager.getInstance(context).cancelUniqueWork("notice_monitor")
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -105,11 +169,12 @@ class MainActivity : ComponentActivity() {
 fun TopControls(
     selectedCategory: String,
     lastUpdate: String,
-    onCategorySelected: (String) -> Unit
+    notificationsEnabled: Boolean,
+    onCategorySelected: (String) -> Unit,
+    onNotificationsChanged: (Boolean) -> Unit
 ) {
     val options = listOf("All", "Diploma", "SSC", "HSC")
     var expanded by remember { mutableStateOf(false) }
-    var checked by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier
@@ -154,11 +219,11 @@ fun TopControls(
             verticalArrangement = Arrangement.Center
         ) {
             Switch(
-                checked = checked,
-                onCheckedChange = { checked = it },
+                checked = notificationsEnabled,
+                onCheckedChange = { onNotificationsChanged(it) },
                 thumbContent = {
                     Icon(
-                        imageVector = if (checked) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
+                        imageVector = if (notificationsEnabled) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
                         contentDescription = null,
                         modifier = Modifier.size(SwitchDefaults.IconSize)
                     )
@@ -211,6 +276,12 @@ fun NoticeItem(notice: Notice) {
 @Composable
 fun TopControlsPreview() {
     NotBTEBTheme {
-        TopControls(selectedCategory = "All", lastUpdate = "15-04-2026", onCategorySelected = {})
+        TopControls(
+            selectedCategory = "All",
+            lastUpdate = "15-04-2026",
+            notificationsEnabled = true,
+            onCategorySelected = {},
+            onNotificationsChanged = {}
+        )
     }
 }
