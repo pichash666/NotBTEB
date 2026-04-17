@@ -10,57 +10,71 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.notbteb.ui.theme.NotBTEBTheme
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
-import androidx.core.content.edit
-
 class MainActivity : ComponentActivity() {
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -69,13 +83,21 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
                 val prefs = remember { context.getSharedPreferences("app_prefs", MODE_PRIVATE) }
                 
+                var selectedTabIndex by remember { mutableStateOf(0) }
                 var selectedCategory by remember { mutableStateOf(prefs.getString("selected_category", "All") ?: "All") }
                 val notices = remember { mutableStateListOf<Notice>() }
+                val results = remember { mutableStateListOf<Notice>() }
+                
                 var lastUpdate by remember { mutableStateOf(prefs.getString("last_update", "") ?: "") }
+                var lastResultUpdate by remember { mutableStateOf(prefs.getString("special_last_update", "") ?: "") }
+                
                 var isLoading by remember { mutableStateOf(false) }
                 var isNotificationsEnabled by remember { 
                     mutableStateOf(prefs.getBoolean("notifications_enabled", false)) 
                 }
+
+                val scope = rememberCoroutineScope()
+                val refreshState = rememberPullToRefreshState()
 
                 val launcher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
@@ -87,68 +109,118 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                LaunchedEffect(selectedCategory) {
+                suspend fun refreshData() {
                     isLoading = true
-                    prefs.edit { putString("selected_category", selectedCategory) }
                     try {
-                        val response = NoticeScraper.fetchNotices(selectedCategory)
-                        notices.clear()
-                        notices.addAll(response.notices)
-                        
-                        if (response.lastUpdate.isNotEmpty()) {
-                            lastUpdate = response.lastUpdate
-                            prefs.edit { putString("last_update", lastUpdate) }
+                        if (selectedTabIndex == 0) {
+                            val response = NoticeScraper.fetchNotices(selectedCategory)
+                            notices.clear()
+                            notices.addAll(response.notices)
+                            if (response.lastUpdate.isNotEmpty()) {
+                                lastUpdate = response.lastUpdate
+                                prefs.edit { putString("last_update", lastUpdate) }
+                            }
+                        } else {
+                            val response = NoticeScraper.fetchResults()
+                            results.clear()
+                            results.addAll(response.notices)
+                            if (response.lastUpdate.isNotEmpty()) {
+                                lastResultUpdate = response.lastUpdate
+                                prefs.edit { putString("special_last_update", lastResultUpdate) }
+                            }
                         }
                     } catch (e: Exception) {
-                        // Log or show error
+                        e.printStackTrace()
                     } finally {
                         isLoading = false
                     }
-                    
+                }
+
+                LaunchedEffect(selectedCategory, selectedTabIndex) {
+                    refreshData()
                     if (isNotificationsEnabled) {
                         scheduleNotificationWorker(context)
                     }
                 }
 
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Column(modifier = Modifier.padding(innerPadding)) {
-                        TopControls(
-                            selectedCategory = selectedCategory,
-                            lastUpdate = lastUpdate,
-                            notificationsEnabled = isNotificationsEnabled,
-                            onCategorySelected = { selectedCategory = it },
-                            onNotificationsChanged = { enabled ->
-                                if (enabled) {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                                            isNotificationsEnabled = true
-                                            prefs.edit { putBoolean("notifications_enabled", true) }
-                                            scheduleNotificationWorker(context)
-                                        } else {
-                                            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                        }
-                                    } else {
-                                        isNotificationsEnabled = true
-                                        prefs.edit { putBoolean("notifications_enabled", true) }
-                                        scheduleNotificationWorker(context)
-                                    }
-                                } else {
-                                    isNotificationsEnabled = false
-                                    prefs.edit { putBoolean("notifications_enabled", false) }
-                                    cancelNotificationWorker(context)
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    topBar = {
+                        TopAppBar(
+                            title = { Text("BTEB Notifier", fontWeight = FontWeight.Bold) },
+                            actions = {
+                                IconButton(onClick = { scope.launch { refreshData() } }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                                 }
+                                NotificationToggle(
+                                    enabled = isNotificationsEnabled,
+                                    onChanged = { enabled ->
+                                        if (enabled) {
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                                                    isNotificationsEnabled = true
+                                                    prefs.edit { putBoolean("notifications_enabled", true) }
+                                                    scheduleNotificationWorker(context)
+                                                } else {
+                                                    launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                                }
+                                            } else {
+                                                isNotificationsEnabled = true
+                                                prefs.edit { putBoolean("notifications_enabled", true) }
+                                                scheduleNotificationWorker(context)
+                                            }
+                                        } else {
+                                            isNotificationsEnabled = false
+                                            prefs.edit { putBoolean("notifications_enabled", false) }
+                                            cancelNotificationWorker(context)
+                                        }
+                                    }
+                                )
                             }
                         )
-                        if (isLoading) {
-                            Column(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.Center,
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                CircularProgressIndicator()
-                            }
+                    }
+                ) { innerPadding ->
+                    Column(modifier = Modifier.padding(innerPadding)) {
+                        TabRow(selectedTabIndex = selectedTabIndex) {
+                            Tab(
+                                selected = selectedTabIndex == 0,
+                                onClick = { selectedTabIndex = 0 },
+                                text = { Text("Notices") }
+                            )
+                            Tab(
+                                selected = selectedTabIndex == 1,
+                                onClick = { selectedTabIndex = 1 },
+                                text = { Text("Results") }
+                            )
+                        }
+
+                        if (selectedTabIndex == 0) {
+                            CategorySelector(
+                                selectedCategory = selectedCategory,
+                                lastUpdate = lastUpdate,
+                                onCategorySelected = { 
+                                    selectedCategory = it
+                                    prefs.edit { putString("selected_category", it) }
+                                }
+                            )
                         } else {
-                            NoticeList(notices = notices)
+                            if (lastResultUpdate.isNotEmpty()) {
+                                Text(
+                                    text = "Last Updated: $lastResultUpdate",
+                                    modifier = Modifier.padding(16.dp, 8.dp),
+                                    fontSize = 12.sp,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+
+                        PullToRefreshBox(
+                            state = refreshState,
+                            isRefreshing = isLoading,
+                            onRefresh = { scope.launch { refreshData() } },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            NoticeList(notices = if (selectedTabIndex == 0) notices else results)
                         }
                     }
                 }
@@ -171,14 +243,30 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable
+fun NotificationToggle(
+    enabled: Boolean,
+    onChanged: (Boolean) -> Unit
+) {
+    Switch(
+        checked = enabled,
+        onCheckedChange = { onChanged(it) },
+        thumbContent = {
+            Icon(
+                imageVector = if (enabled) Icons.Filled.Notifications else Icons.Filled.Warning,
+                contentDescription = null,
+                modifier = Modifier.size(SwitchDefaults.IconSize)
+            )
+        }
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TopControls(
+fun CategorySelector(
     selectedCategory: String,
     lastUpdate: String,
-    notificationsEnabled: Boolean,
-    onCategorySelected: (String) -> Unit,
-    onNotificationsChanged: (Boolean) -> Unit
+    onCategorySelected: (String) -> Unit
 ) {
     val options = listOf("All", "Diploma", "SSC", "HSC")
     var expanded by remember { mutableStateOf(false) }
@@ -193,14 +281,16 @@ fun TopControls(
         ExposedDropdownMenuBox(
             expanded = expanded,
             onExpandedChange = { expanded = !expanded },
-            modifier = Modifier.width(250.dp)
+            modifier = Modifier.weight(1f)
         ) {
             OutlinedTextField(
-                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                modifier = Modifier
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                    .fillMaxWidth(),
                 readOnly = true,
                 value = selectedCategory,
                 onValueChange = {},
-                label = { Text("Filter") },
+                label = { Text("Category") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
             )
@@ -221,74 +311,92 @@ fun TopControls(
             }
         }
 
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Switch(
-                checked = notificationsEnabled,
-                onCheckedChange = { onNotificationsChanged(it) },
-                thumbContent = {
-                    Icon(
-                        imageVector = if (notificationsEnabled) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
-                        contentDescription = null,
-                        modifier = Modifier.size(SwitchDefaults.IconSize)
-                    )
-                }
-            )
-            if (lastUpdate.isNotEmpty()) {
+        if (lastUpdate.isNotEmpty()) {
+            Column(
+                modifier = Modifier.padding(start = 16.dp),
+                horizontalAlignment = Alignment.End
+            ) {
                 Text(
-                    text = "Last: $lastUpdate",
-                    fontSize = 8.sp,
-                    lineHeight = 10.sp,
-                    color = Color.Gray,
-                    modifier = Modifier.padding(top = 2.dp)
+                    text = "Update",
+                    fontSize = 10.sp,
+                    color = Color.Gray
+                )
+                Text(
+                    text = lastUpdate,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NoticeList(notices: List<Notice>) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(notices) { notice ->
-            NoticeItem(notice)
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+    val uriHandler = LocalUriHandler.current
+    if (notices.isEmpty()) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("No notices found", color = Color.Gray)
+        }
+    } else {
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            items(notices) { notice ->
+                NoticeItem(
+                    notice = notice,
+                    onClick = {
+                        if (notice.link.isNotEmpty()) {
+                            uriHandler.openUri(notice.link)
+                        }
+                    }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp)
+            }
         }
     }
 }
 
 @Composable
-fun NoticeItem(notice: Notice) {
+fun NoticeItem(notice: Notice, onClick: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable { onClick() }
             .padding(16.dp)
     ) {
         Text(
             text = notice.title,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 20.sp
         )
-        Text(
-            text = notice.date,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(top = 4.dp)
-        )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun TopControlsPreview() {
-    NotBTEBTheme {
-        TopControls(
-            selectedCategory = "All",
-            lastUpdate = "15-04-2026",
-            notificationsEnabled = true,
-            onCategorySelected = {},
-            onNotificationsChanged = {}
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = notice.date,
+                fontSize = 12.sp,
+                color = Color.Gray
+            )
+            if (notice.link.isNotEmpty()) {
+                Text(
+                    text = "View PDF",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
     }
 }
