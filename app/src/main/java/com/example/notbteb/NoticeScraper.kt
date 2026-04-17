@@ -33,7 +33,7 @@ object NoticeScraper {
     
     private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-    suspend fun fetchNotices(category: String): NoticeResponse = fetchFromUrl(URL_MAP[category] ?: URL_MAP["All"]!!, category == "All", isResult = false)
+    suspend fun fetchNotices(category: String): NoticeResponse = fetchFromUrl(URL_MAP[category] ?: URL_MAP["All"]!!, true, isResult = false)
 
     suspend fun fetchResults(): NoticeResponse = fetchFromUrl(SPECIAL_NOTICE_URL, false, isResult = true)
 
@@ -109,16 +109,40 @@ object NoticeScraper {
                     }
                 }
             } else if (isTable) {
-                val rows = mainContent.select("table tbody tr")
+                // Try to find the notice table by ID or class
+                val table = mainContent.select("#noticeTable").first() 
+                    ?: mainContent.select("table.table").first()
+                    ?: mainContent.select("table").first()
+                
+                val rows = table?.select("tbody tr") ?: mainContent.select("table tbody tr")
                 for (row in rows) {
                     val cols = row.select("td")
-                    if (cols.size >= 5) {
-                        val title = cols[1].text().trim()
-                        val date = cols[4].text().trim()
-                        val linkElement = cols.select("a").first() ?: row.select("a").first()
+                    if (cols.isNotEmpty()) {
+                        val title: String
+                        val date: String
+                        val linkElement: org.jsoup.nodes.Element?
+                        
+                        if (cols.size >= 5) {
+                            // Format for "All" notices page
+                            title = cols[1].text().trim()
+                            date = cols[4].text().trim()
+                            linkElement = cols.select("a").first() ?: row.select("a").first()
+                        } else if (cols.size >= 2) {
+                            // Format for static pages (Diploma, SSC, HSC)
+                            // Col 0 is Date, Col 1 is Title/Link
+                            date = cols[0].text().trim()
+                            linkElement = cols[1].select("a").first()
+                            title = linkElement?.text()?.trim() ?: cols[1].text().trim()
+                        } else {
+                            continue
+                        }
+
                         var link = linkElement?.attr("href") ?: ""
                         if (link.startsWith("/")) link = BASE_URL + link
-                        if (title.isNotEmpty()) notices.add(Notice(title, date, link))
+                        
+                        if (title.isNotEmpty() && !notices.any { it.link == link }) {
+                            notices.add(Notice(title, date, link))
+                        }
                     }
                 }
             } else {
