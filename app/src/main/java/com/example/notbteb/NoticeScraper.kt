@@ -17,6 +17,7 @@ data class NoticeResponse(
 
 object NoticeScraper {
     private const val BASE_URL = "https://bteb.gov.bd"
+    const val SPECIAL_NOTICE_URL = "$BASE_URL/pages/static-pages/691997b2933eb65569dde217"
     
     val URL_MAP = mapOf(
         "All" to "$BASE_URL/pages/notices",
@@ -30,8 +31,20 @@ object NoticeScraper {
     private val titlePrefixRegex = """^[\[\]\s:-]+""".toRegex()
     private val titleSuffixRegex = """[\[\]\s:-]+$""".toRegex()
 
-    suspend fun fetchNotices(category: String): NoticeResponse = withContext(Dispatchers.IO) {
-        val url = URL_MAP[category] ?: URL_MAP["All"]!!
+    suspend fun fetchNotices(category: String): NoticeResponse = fetchFromUrl(URL_MAP[category] ?: URL_MAP["All"]!!, category == "All")
+
+    suspend fun fetchSpecialUpdateDate(): String = withContext(Dispatchers.IO) {
+        try {
+            val doc = Jsoup.connect(SPECIAL_NOTICE_URL).timeout(10000).userAgent("Mozilla/5.0").get()
+            val footerText = doc.text()
+            val updateMatch = updateRegex.find(footerText)
+            updateMatch?.groupValues?.get(1)?.trim() ?: ""
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    private suspend fun fetchFromUrl(url: String, isTable: Boolean): NoticeResponse = withContext(Dispatchers.IO) {
         val notices = mutableListOf<Notice>()
         var siteLastUpdate = ""
         
@@ -41,12 +54,11 @@ object NoticeScraper {
                 .userAgent("Mozilla/5.0")
                 .get()
             
-            // Extract Site Last Update Date from footer as fallback
             val footerText = doc.text()
             val updateMatch = updateRegex.find(footerText)
             siteLastUpdate = updateMatch?.groupValues?.get(1)?.trim() ?: ""
 
-            if (category == "All") {
+            if (isTable) {
                 val rows = doc.select("table tbody tr")
                 for (row in rows) {
                     val cols = row.select("td")
@@ -64,18 +76,13 @@ object NoticeScraper {
                 for (item in items) {
                     val linkElement = item.select("a").first() ?: continue
                     val fullText = item.text().trim()
-                    
                     val dateMatch = dateRegex.find(fullText)
                     
                     if (dateMatch != null) {
                         val date = dateMatch.value
                         val title = fullText.replace(date, "").trim()
-                        val cleanTitle = title.replace(titlePrefixRegex, "")
-                                             .replace(titleSuffixRegex, "")
-                        
-                        val link = linkElement.attr("href").let { 
-                            if (it.startsWith("/")) BASE_URL + it else it 
-                        }
+                        val cleanTitle = title.replace(titlePrefixRegex, "").replace(titleSuffixRegex, "")
+                        val link = linkElement.attr("href").let { if (it.startsWith("/")) BASE_URL + it else it }
                         
                         if (cleanTitle.length > 5 && !notices.any { it.title == cleanTitle }) {
                             notices.add(Notice(cleanTitle, date, link))
@@ -84,13 +91,9 @@ object NoticeScraper {
                 }
                 notices.sortByDescending { it.date }
             }
-        } catch (e: Exception) {
-            // Error handling
-        }
+        } catch (e: Exception) { }
         
-        // Use the date of the latest notice if available, otherwise fallback to site update date
         val displayUpdate = notices.firstOrNull()?.date ?: siteLastUpdate
-        
         NoticeResponse(notices, displayUpdate)
     }
 }

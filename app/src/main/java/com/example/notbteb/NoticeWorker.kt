@@ -15,19 +15,27 @@ class NoticeWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val prefs = applicationContext.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         val selectedCategory = prefs.getString("selected_category", "All") ?: "All"
         val savedLastUpdate = prefs.getString("last_update", "") ?: ""
+        val savedSpecialUpdate = prefs.getString("special_last_update", "") ?: ""
 
         try {
+            // 1. Check Special Notice Page (Unconditional)
+            val specialUpdate = NoticeScraper.fetchSpecialUpdateDate()
+            if (specialUpdate.isNotEmpty() && specialUpdate != savedSpecialUpdate) {
+                showNotification(
+                    "BTEB Result Update",
+                    "New results or updates detected on the BTEB results page."
+                )
+                prefs.edit().putString("special_last_update", specialUpdate).apply()
+            }
+
+            // 2. Check Selected Category
             val response = NoticeScraper.fetchNotices(selectedCategory)
-            
             if (response.lastUpdate.isNotEmpty() && response.lastUpdate != savedLastUpdate) {
-                // New update found
                 val latestNotice = response.notices.firstOrNull()
                 showNotification(
                     "New Notice: $selectedCategory",
                     latestNotice?.title ?: "The BTEB site has been updated."
                 )
-                
-                // Update saved state
                 prefs.edit().putString("last_update", response.lastUpdate).apply()
             }
         } catch (e: Exception) {
