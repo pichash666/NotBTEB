@@ -1,4 +1,4 @@
-package com.example.notbteb
+package com.pichash666.notbteb
 
 import androidx.annotation.Keep
 import androidx.compose.runtime.Immutable

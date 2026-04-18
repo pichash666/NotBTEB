@@ -1,4 +1,4 @@
-package com.example.notbteb.ui.theme
+package com.pichash666.notbteb.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle

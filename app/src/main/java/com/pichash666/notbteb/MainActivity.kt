@@ -1,4 +1,4 @@
-package com.example.notbteb
+package com.pichash666.notbteb
 
 import android.Manifest
 import android.content.Context
@@ -68,7 +68,7 @@ import androidx.core.content.edit
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import com.example.notbteb.ui.theme.NotBTEBTheme
+import com.pichash666.notbteb.ui.theme.NotBTEBTheme
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 

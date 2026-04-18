@@ -1,4 +1,4 @@
-package com.example.notbteb
+package com.pichash666.notbteb
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,7 +8,6 @@ import androidx.core.app.NotificationCompat
 import androidx.annotation.Keep
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import androidx.work.ListenableWorker.Result
 
 @Keep
 class NoticeWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {

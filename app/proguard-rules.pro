@@ -10,7 +10,7 @@
 
 # WorkManager: Mandatory for background sync to work in Release
 -keep class androidx.work.** { *; }
--keep class com.example.notbteb.NoticeWorker { *; }
+-keep class com.pichash666.notbteb.NoticeWorker { *; }
 
 # Compose: Prevents UI components from being optimized away
 -keepclassmembers class  ** {

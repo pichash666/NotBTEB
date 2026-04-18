@@ -1,4 +1,4 @@
-package com.example.notbteb
+package com.pichash666.notbteb
 
 import org.junit.Test
 
