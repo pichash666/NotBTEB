@@ -34,7 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -48,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -88,7 +89,7 @@ class MainActivity : ComponentActivity() {
                 
                 var lastUpdate by remember { mutableStateOf(prefs.getString("last_update", "") ?: "") }
                 var lastResultUpdate by remember { mutableStateOf(prefs.getString("special_last_update", "") ?: "") }
-                var lastSyncTime by remember { mutableStateOf(prefs.getLong("last_background_check_time", 0L)) }
+                var lastSyncTime by remember { mutableLongStateOf(prefs.getLong("last_background_check_time", 0L)) }
                 
                 var isLoading by remember { mutableStateOf(false) }
                 var isNotificationsEnabled by remember { 
@@ -105,10 +106,28 @@ class MainActivity : ComponentActivity() {
                         isNotificationsEnabled = true
                         prefs.edit { putBoolean("notifications_enabled", true) }
                         scheduleNotificationWorker(context)
+                    } else {
+                        isNotificationsEnabled = false
+                        prefs.edit { putBoolean("notifications_enabled", false) }
+                    }
+                }
+
+                LaunchedEffect(Unit) {
+                    if (isNotificationsEnabled) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                scheduleNotificationWorker(context)
+                            }
+                        } else {
+                            scheduleNotificationWorker(context)
+                        }
                     }
                 }
 
                 suspend fun refreshData() {
+                    if (isLoading) return
                     isLoading = true
                     try {
                         if (selectedTabIndex == 0) {
@@ -180,7 +199,7 @@ class MainActivity : ComponentActivity() {
                     }
                 ) { innerPadding ->
                     Column(modifier = Modifier.padding(innerPadding)) {
-                        PrimaryTabRow(selectedTabIndex = selectedTabIndex) {
+                        TabRow(selectedTabIndex = selectedTabIndex) {
                             Tab(
                                 selected = selectedTabIndex == 0,
                                 onClick = { selectedTabIndex = 0 },
