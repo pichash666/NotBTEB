@@ -93,7 +93,7 @@ class MainActivity : ComponentActivity() {
                 
                 var isLoading by remember { mutableStateOf(false) }
                 var isNotificationsEnabled by remember { 
-                    mutableStateOf(prefs.getBoolean("notifications_enabled", false)) 
+                    mutableStateOf(prefs.getBoolean("notifications_enabled", true))
                 }
 
                 val scope = rememberCoroutineScope()
