@@ -5,10 +5,12 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.annotation.Keep
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.ListenableWorker.Result
 
+@Keep
 class NoticeWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -18,6 +20,9 @@ class NoticeWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val savedSpecialUpdate = prefs.getString("special_last_update", "") ?: ""
 
         try {
+            // Update last sync time for UI
+            prefs.edit().putLong("last_background_check_time", System.currentTimeMillis()).apply()
+
             // 1. Check Special Notice Page (Unconditional)
             val specialUpdate = NoticeScraper.fetchSpecialUpdateDate()
             if (specialUpdate.isNotEmpty() && specialUpdate != savedSpecialUpdate) {

@@ -26,8 +26,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -234,7 +234,8 @@ class MainActivity : ComponentActivity() {
 
                         if (lastSyncTime > 0) {
                             val timeAgo = remember(lastSyncTime) {
-                                java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(lastSyncTime))
+                                val sdf = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault())
+                                sdf.format(java.util.Date(lastSyncTime))
                             }
                             Text(
                                 text = "Background Sync: Active (Last: $timeAgo)",
@@ -263,13 +264,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun scheduleNotificationWorker(context: Context) {
-        val workRequest = PeriodicWorkRequestBuilder<NoticeWorker>(15, TimeUnit.MINUTES)
-            .build()
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            "notice_monitor",
-            ExistingPeriodicWorkPolicy.REPLACE,
-            workRequest
-        )
+        try {
+            val workRequest = PeriodicWorkRequestBuilder<NoticeWorker>(15, TimeUnit.MINUTES)
+                .build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                "notice_monitor",
+                ExistingPeriodicWorkPolicy.KEEP,
+                workRequest
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun cancelNotificationWorker(context: Context) {
@@ -302,7 +307,7 @@ fun CategorySelector(
     lastUpdate: String,
     onCategorySelected: (String) -> Unit
 ) {
-    val options = listOf("All", "Diploma", "SSC", "HSC")
+    val options = remember { listOf("All", "Diploma", "SSC", "HSC") }
     var expanded by remember { mutableStateOf(false) }
 
     Row(
@@ -319,7 +324,7 @@ fun CategorySelector(
         ) {
             OutlinedTextField(
                 modifier = Modifier
-                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable)
                     .fillMaxWidth(),
                 readOnly = true,
                 value = selectedCategory,
@@ -379,7 +384,9 @@ fun NoticeList(notices: List<Notice>) {
             Text("No notices found", color = Color.Gray)
         }
     } else {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+        ) {
             items(notices, key = { it.link }) { notice ->
                 NoticeItem(
                     notice = notice,

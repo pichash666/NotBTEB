@@ -1,15 +1,20 @@
 package com.example.notbteb
 
+import androidx.annotation.Keep
+import androidx.compose.runtime.Immutable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 
+@Keep
+@Immutable
 data class Notice(
     val title: String,
     val date: String,
     val link: String
 )
 
+@Keep
 data class NoticeResponse(
     val notices: List<Notice>,
     val lastUpdate: String
