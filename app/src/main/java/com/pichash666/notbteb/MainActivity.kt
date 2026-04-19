@@ -65,7 +65,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.pichash666.notbteb.ui.theme.NotBTEBTheme
@@ -105,7 +107,7 @@ class MainActivity : ComponentActivity() {
                     if (isGranted) {
                         isNotificationsEnabled = true
                         prefs.edit { putBoolean("notifications_enabled", true) }
-                        scheduleNotificationWorker(context)
+                        NoticeWorker.schedule(context)
                     } else {
                         isNotificationsEnabled = false
                         prefs.edit { putBoolean("notifications_enabled", false) }
@@ -118,10 +120,10 @@ class MainActivity : ComponentActivity() {
                             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                                 launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             } else {
-                                scheduleNotificationWorker(context)
+                                NoticeWorker.schedule(context)
                             }
                         } else {
-                            scheduleNotificationWorker(context)
+                            NoticeWorker.schedule(context)
                         }
                     }
                 }
@@ -157,7 +159,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(selectedCategory, selectedTabIndex) {
                     refreshData()
                     if (isNotificationsEnabled) {
-                        scheduleNotificationWorker(context)
+                        NoticeWorker.schedule(context)
                     }
                 }
 
@@ -178,19 +180,19 @@ class MainActivity : ComponentActivity() {
                                                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                                                     isNotificationsEnabled = true
                                                     prefs.edit { putBoolean("notifications_enabled", true) }
-                                                    scheduleNotificationWorker(context)
+                                                    NoticeWorker.schedule(context)
                                                 } else {
                                                     launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                                 }
                                             } else {
                                                 isNotificationsEnabled = true
                                                 prefs.edit { putBoolean("notifications_enabled", true) }
-                                                scheduleNotificationWorker(context)
+                                                NoticeWorker.schedule(context)
                                             }
                                         } else {
                                             isNotificationsEnabled = false
                                             prefs.edit { putBoolean("notifications_enabled", false) }
-                                            cancelNotificationWorker(context)
+                                            NoticeWorker.cancel(context)
                                         }
                                     }
                                 )
@@ -263,23 +265,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun scheduleNotificationWorker(context: Context) {
-        try {
-            val workRequest = PeriodicWorkRequestBuilder<NoticeWorker>(15, TimeUnit.MINUTES)
-                .build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                "notice_monitor",
-                ExistingPeriodicWorkPolicy.KEEP,
-                workRequest
-            )
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun cancelNotificationWorker(context: Context) {
-        WorkManager.getInstance(context).cancelUniqueWork("notice_monitor")
-    }
+    // Removed local helper methods in favor of NoticeWorker.schedule/cancel
 }
 
 @Composable
