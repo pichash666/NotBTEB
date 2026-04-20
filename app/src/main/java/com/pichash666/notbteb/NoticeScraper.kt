@@ -57,6 +57,7 @@ object NoticeScraper {
 
     private suspend fun fetchFromUrl(url: String, isTable: Boolean, isResult: Boolean): NoticeResponse = withContext(Dispatchers.IO) {
         val notices = mutableListOf<Notice>()
+        val seenLinks = mutableSetOf<String>()
         var siteLastUpdate = ""
         
         try {
@@ -86,7 +87,7 @@ object NoticeScraper {
                             if (title.length > 5) {
                                 if (link.startsWith("/")) link = BASE_URL + link
                                 val date = dateRegex.find(title)?.value ?: ""
-                                if (link.isNotEmpty() && !notices.any { it.link == link }) {
+                                if (link.isNotEmpty() && seenLinks.add(link)) {
                                     notices.add(Notice(title, date, link))
                                 }
                             }
@@ -107,7 +108,7 @@ object NoticeScraper {
                             val date = dateRegex.find(title)?.value ?: ""
                             val cleanTitle = title.replace(date, "").replace(titlePrefixRegex, "").replace(titleSuffixRegex, "").trim()
                             
-                            if (cleanTitle.isNotEmpty() && !notices.any { it.link == link }) {
+                            if (cleanTitle.isNotEmpty() && seenLinks.add(link)) {
                                 notices.add(Notice(cleanTitle, date, link))
                             }
                         }
@@ -145,7 +146,7 @@ object NoticeScraper {
                         var link = linkElement?.attr("href") ?: ""
                         if (link.startsWith("/")) link = BASE_URL + link
                         
-                        if (title.isNotEmpty() && !notices.any { it.link == link }) {
+                        if (title.isNotEmpty() && seenLinks.add(link)) {
                             notices.add(Notice(title, date, link))
                         }
                     }
@@ -164,7 +165,7 @@ object NoticeScraper {
                         var link = linkElement.attr("href")
                         if (link.startsWith("/")) link = BASE_URL + link
                         
-                        if (cleanTitle.length > 5 && !notices.any { it.link == link }) {
+                        if (cleanTitle.length > 5 && seenLinks.add(link)) {
                             notices.add(Notice(cleanTitle, date, link))
                         }
                     }
@@ -178,6 +179,6 @@ object NoticeScraper {
         }
         
         val displayUpdate = notices.firstOrNull()?.date ?: siteLastUpdate
-        NoticeResponse(notices.distinctBy { it.link }, displayUpdate)
+        NoticeResponse(notices, displayUpdate)
     }
 }

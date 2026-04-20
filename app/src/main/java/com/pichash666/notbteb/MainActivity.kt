@@ -2,14 +2,19 @@ package com.pichash666.notbteb
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -45,14 +50,11 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,16 +67,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
-import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
 import com.pichash666.notbteb.ui.theme.NotBTEBTheme
-import kotlinx.coroutines.launch
-import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
+    private val viewModel: NoticeViewModel by viewModels()
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    override fun onResume() {
+        super.onResume()
+        viewModel.checkBatteryOptimizations()
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -84,33 +87,22 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
                 val prefs = remember { context.getSharedPreferences("app_prefs", MODE_PRIVATE) }
                 
-                var selectedTabIndex by remember { mutableIntStateOf(0) }
-                var selectedCategory by remember { mutableStateOf(prefs.getString("selected_category", "All") ?: "All") }
-                val notices = remember { mutableStateListOf<Notice>() }
-                val results = remember { mutableStateListOf<Notice>() }
+                val lastSyncTime by viewModel.lastSyncTime.collectAsState()
                 
-                var lastUpdate by remember { mutableStateOf(prefs.getString("last_update", "") ?: "") }
-                var lastResultUpdate by remember { mutableStateOf(prefs.getString("special_last_update", "") ?: "") }
-                var lastSyncTime by remember { mutableLongStateOf(prefs.getLong("last_background_check_time", 0L)) }
-                
-                var isLoading by remember { mutableStateOf(false) }
                 var isNotificationsEnabled by remember { 
                     mutableStateOf(prefs.getBoolean("notifications_enabled", true))
                 }
 
-                val scope = rememberCoroutineScope()
                 val refreshState = rememberPullToRefreshState()
 
                 val launcher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
                 ) { isGranted ->
+                    isNotificationsEnabled = isGranted
+                    prefs.edit { putBoolean("notifications_enabled", isGranted) }
                     if (isGranted) {
-                        isNotificationsEnabled = true
-                        prefs.edit { putBoolean("notifications_enabled", true) }
                         NoticeWorker.schedule(context)
-                    } else {
-                        isNotificationsEnabled = false
-                        prefs.edit { putBoolean("notifications_enabled", false) }
+                        requestIgnoreBatteryOptimizations(context)
                     }
                 }
 
@@ -121,45 +113,12 @@ class MainActivity : ComponentActivity() {
                                 launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             } else {
                                 NoticeWorker.schedule(context)
+                                requestIgnoreBatteryOptimizations(context)
                             }
                         } else {
                             NoticeWorker.schedule(context)
+                            requestIgnoreBatteryOptimizations(context)
                         }
-                    }
-                }
-
-                suspend fun refreshData() {
-                    if (isLoading) return
-                    isLoading = true
-                    try {
-                        if (selectedTabIndex == 0) {
-                            val response = NoticeScraper.fetchNotices(selectedCategory)
-                            notices.clear()
-                            notices.addAll(response.notices)
-                            if (response.lastUpdate.isNotEmpty()) {
-                                lastUpdate = response.lastUpdate
-                                prefs.edit { putString("last_update", lastUpdate) }
-                            }
-                        } else {
-                            val response = NoticeScraper.fetchResults()
-                            results.clear()
-                            results.addAll(response.notices)
-                            if (response.lastUpdate.isNotEmpty()) {
-                                lastResultUpdate = response.lastUpdate
-                                prefs.edit { putString("special_last_update", lastResultUpdate) }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    } finally {
-                        isLoading = false
-                    }
-                }
-
-                LaunchedEffect(selectedCategory, selectedTabIndex) {
-                    refreshData()
-                    if (isNotificationsEnabled) {
-                        NoticeWorker.schedule(context)
                     }
                 }
 
@@ -169,7 +128,7 @@ class MainActivity : ComponentActivity() {
                         TopAppBar(
                             title = { Text("BTEB Notifier", fontWeight = FontWeight.Bold) },
                             actions = {
-                                IconButton(onClick = { scope.launch { refreshData() } }) {
+                                IconButton(onClick = { viewModel.refreshData() }) {
                                     Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                                 }
                                 NotificationToggle(
@@ -181,6 +140,7 @@ class MainActivity : ComponentActivity() {
                                                     isNotificationsEnabled = true
                                                     prefs.edit { putBoolean("notifications_enabled", true) }
                                                     NoticeWorker.schedule(context)
+                                                    requestIgnoreBatteryOptimizations(context)
                                                 } else {
                                                     launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                                 }
@@ -188,6 +148,7 @@ class MainActivity : ComponentActivity() {
                                                 isNotificationsEnabled = true
                                                 prefs.edit { putBoolean("notifications_enabled", true) }
                                                 NoticeWorker.schedule(context)
+                                                requestIgnoreBatteryOptimizations(context)
                                             }
                                         } else {
                                             isNotificationsEnabled = false
@@ -201,32 +162,29 @@ class MainActivity : ComponentActivity() {
                     }
                 ) { innerPadding ->
                     Column(modifier = Modifier.padding(innerPadding)) {
-                        TabRow(selectedTabIndex = selectedTabIndex) {
+                        TabRow(selectedTabIndex = viewModel.selectedTabIndex) {
                             Tab(
-                                selected = selectedTabIndex == 0,
-                                onClick = { selectedTabIndex = 0 },
+                                selected = viewModel.selectedTabIndex == 0,
+                                onClick = { viewModel.setTabIndex(0) },
                                 text = { Text("Notices") }
                             )
                             Tab(
-                                selected = selectedTabIndex == 1,
-                                onClick = { selectedTabIndex = 1 },
+                                selected = viewModel.selectedTabIndex == 1,
+                                onClick = { viewModel.setTabIndex(1) },
                                 text = { Text("Results") }
                             )
                         }
 
-                        if (selectedTabIndex == 0) {
+                        if (viewModel.selectedTabIndex == 0) {
                             CategorySelector(
-                                selectedCategory = selectedCategory,
-                                lastUpdate = lastUpdate,
-                                onCategorySelected = { 
-                                    selectedCategory = it
-                                    prefs.edit { putString("selected_category", it) }
-                                }
+                                selectedCategory = viewModel.selectedCategory,
+                                lastUpdate = viewModel.lastUpdate,
+                                onCategorySelected = { viewModel.setCategory(it) }
                             )
                         } else {
-                            if (lastResultUpdate.isNotEmpty()) {
+                            if (viewModel.lastResultUpdate.isNotEmpty()) {
                                 Text(
-                                    text = "Last Updated: $lastResultUpdate",
+                                    text = "Last Updated: ${viewModel.lastResultUpdate}",
                                     modifier = Modifier.padding(16.dp, 8.dp),
                                     fontSize = 12.sp,
                                     color = Color.Gray
@@ -239,22 +197,38 @@ class MainActivity : ComponentActivity() {
                                 val sdf = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault())
                                 sdf.format(java.util.Date(lastSyncTime))
                             }
-                            Text(
-                                text = "Background Sync: Active (Last: $timeAgo)",
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                fontSize = 10.sp,
-                                color = Color.Gray.copy(alpha = 0.7f)
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Background Sync: Active (Last: $timeAgo)",
+                                    fontSize = 10.sp,
+                                    color = Color.Gray.copy(alpha = 0.7f)
+                                )
+                                if (!viewModel.isIgnoringBatteryOptimizations && isNotificationsEnabled) {
+                                    Text(
+                                        text = "Optimization Active!",
+                                        fontSize = 10.sp,
+                                        color = Color.Red,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clickable { requestIgnoreBatteryOptimizations(this@MainActivity) }
+                                    )
+                                }
+                            }
                         }
 
-                        val currentList by remember {
-                            derivedStateOf { if (selectedTabIndex == 0) notices else results }
+                        val currentList by remember(viewModel.selectedTabIndex) {
+                            derivedStateOf { if (viewModel.selectedTabIndex == 0) viewModel.notices else viewModel.results }
                         }
 
                         PullToRefreshBox(
                             state = refreshState,
-                            isRefreshing = isLoading,
-                            onRefresh = { scope.launch { refreshData() } },
+                            isRefreshing = viewModel.isLoading,
+                            onRefresh = { viewModel.refreshData() },
                             modifier = Modifier.fillMaxSize()
                         ) {
                             NoticeList(notices = currentList)
@@ -265,7 +239,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Removed local helper methods in favor of NoticeWorker.schedule/cancel
+    private fun requestIgnoreBatteryOptimizations(context: Context) {
+        val packageName = context.packageName
+        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+            val intent = Intent().apply {
+                action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                data = Uri.parse("package:$packageName")
+            }
+            context.startActivity(intent)
+        }
+    }
 }
 
 @Composable
@@ -357,7 +341,6 @@ fun CategorySelector(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NoticeList(notices: List<Notice>) {
     val uriHandler = LocalUriHandler.current
