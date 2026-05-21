@@ -42,19 +42,6 @@ object NoticeScraper {
 
     suspend fun fetchResults(): NoticeResponse = fetchFromUrl(SPECIAL_NOTICE_URL, false, isResult = true)
 
-    suspend fun fetchSpecialUpdateDate(): String = withContext(Dispatchers.IO) {
-        try {
-            val doc = Jsoup.connect(SPECIAL_NOTICE_URL)
-                .timeout(15000)
-                .userAgent(USER_AGENT)
-                .get()
-            val footerText = doc.text()
-            updateRegex.find(footerText)?.groupValues?.get(1)?.trim() ?: ""
-        } catch (e: Exception) {
-            ""
-        }
-    }
-
     private suspend fun fetchFromUrl(url: String, isTable: Boolean, isResult: Boolean): NoticeResponse = withContext(Dispatchers.IO) {
         val notices = mutableListOf<Notice>()
         val seenLinks = mutableSetOf<String>()

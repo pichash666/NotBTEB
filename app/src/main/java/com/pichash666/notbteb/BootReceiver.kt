@@ -8,14 +8,20 @@ import android.util.Log
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action
-        if (action == Intent.ACTION_BOOT_COMPLETED ||
-            action == "android.intent.action.QUICKBOOT_POWERON" ||
-            action == "com.htc.intent.action.QUICKBOOT_POWERON"
-        ) {
+        
+        // Handle Boot, Reboot, and App Updates
+        val isTriggerAction = action == Intent.ACTION_BOOT_COMPLETED ||
+                action == Intent.ACTION_MY_PACKAGE_REPLACED ||
+                action == "android.intent.action.QUICKBOOT_POWERON" ||
+                action == "com.htc.intent.action.QUICKBOOT_POWERON"
+
+        if (isTriggerAction) {
             val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
             val enabled = prefs.getBoolean("notifications_enabled", true)
             if (enabled) {
-                NoticeWorker.schedule(context)
+                // WorkManager with NetworkType.CONNECTED will automatically 
+                // wait for internet if it's not currently available.
+                NoticeWorker.schedule(context, immediate = true)
             }
         }
     }

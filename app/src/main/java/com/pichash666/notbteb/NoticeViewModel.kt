@@ -44,8 +44,10 @@ class NoticeViewModel(application: Application) : AndroidViewModel(application) 
         private set
 
     private val preferenceListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { p, key ->
-        if (key == "last_background_check_time") {
-            _lastSyncTime.value = p.getLong(key, 0L)
+        when (key) {
+            "last_background_check_time" -> _lastSyncTime.value = p.getLong(key, 0L)
+            "last_update" -> lastUpdate = p.getString(key, "") ?: ""
+            "special_last_update" -> lastResultUpdate = p.getString(key, "") ?: ""
         }
     }
 

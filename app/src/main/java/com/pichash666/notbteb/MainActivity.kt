@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
                     isNotificationsEnabled = isGranted
                     prefs.edit { putBoolean("notifications_enabled", isGranted) }
                     if (isGranted) {
-                        NoticeWorker.schedule(context)
+                        NoticeWorker.schedule(context, immediate = true)
                         requestIgnoreBatteryOptimizations(context)
                     }
                 }
@@ -139,7 +139,7 @@ class MainActivity : ComponentActivity() {
                                                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                                                     isNotificationsEnabled = true
                                                     prefs.edit { putBoolean("notifications_enabled", true) }
-                                                    NoticeWorker.schedule(context)
+                                                    NoticeWorker.schedule(context, immediate = true)
                                                     requestIgnoreBatteryOptimizations(context)
                                                 } else {
                                                     launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -147,7 +147,7 @@ class MainActivity : ComponentActivity() {
                                             } else {
                                                 isNotificationsEnabled = true
                                                 prefs.edit { putBoolean("notifications_enabled", true) }
-                                                NoticeWorker.schedule(context)
+                                                NoticeWorker.schedule(context, immediate = true)
                                                 requestIgnoreBatteryOptimizations(context)
                                             }
                                         } else {
